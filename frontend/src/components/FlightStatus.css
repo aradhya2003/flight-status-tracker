@@ -1,0 +1,75 @@
+.flight-status {
+    text-align: center;
+    padding: 20px;
+}
+
+.flight-card {
+    border: 1px solid #ddd;
+    border-radius: 5px;
+    padding: 16px;
+    margin: 10px;
+    background-color: #f9f9f9;
+    text-align: left;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    height: 250px;
+    position: relative;
+    overflow: hidden;
+}
+
+.flight-card p {
+    margin: 5px 0;
+    text-overflow: ellipsis; 
+    overflow: hidden;
+    white-space: nowrap;
+}
+
+.flight-card .key {
+    color: #333;
+    font-weight: bold;
+}
+
+.flight-card .value {
+    color: black;
+}
+
+.flight-card .delay-info {
+    color: #856404; 
+    font-style: italic;
+}
+.flight-info {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 8px;
+  }
+  .key {
+    font-weight: bold;
+  }
+  
+  .value {
+    font-weight: normal;
+  }
+.flight-card.cancelled::before,
+.flight-card.delayed::before,
+.flight-card.ontime::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 100%;
+    width: 5px;
+    background-color: transparent;
+}
+
+.flight-card.cancelled::before {
+    background-color: red;
+}
+
+.flight-card.delayed::before {
+    background-color: orange;
+}
+
+.flight-card.ontime::before {
+    background-color: green;
+}
