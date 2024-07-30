@@ -10,13 +10,13 @@ The Flight Status App is a system designed to provide real-time flight status up
 - **Integration with Airport Systems:** Pull data from airport databases for accurate information.
 
 ## Tech Stack
-### Frontend
+### Frontend:
 - **React.js:** Used for building the user interface.
 - **Material-UI:** For styling and UI components.
 - **Axios:** For making HTTP requests from the frontend to the backend.
 - **Date-fns:** For handling date formatting.
 
-### Backend
+### Backend:
 - **Flask (Python):** Used for building the backend API.
 - **MongoDB:** Used as the database for storing flight data.
 - **Firebase Cloud Messaging:** Used for sending push notifications.
