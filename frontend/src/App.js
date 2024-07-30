@@ -1,24 +1,28 @@
-import React, { useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
+import { Routes, Route, useNavigate, Navigate } from 'react-router-dom';
 import { Container, Typography, Paper, AppBar, Toolbar, Button, Box } from '@mui/material';
-import { messaging, getToken, onMessage } from './firebase';
 import FlightStatus from './components/FlightStatus';
+import Login from './components/Login';
+import Register from './components/Register';
+import { messaging, getToken, onMessage } from './firebase';
+import { logout as performLogout } from './utils/auth';
 
 const App = () => {
+  const [isAuthenticated, setIsAuthenticated] = useState(!!localStorage.getItem('token')); // Check token for initial auth status
+  const navigate = useNavigate();
+
   useEffect(() => {
     const requestPermission = async () => {
       try {
         const permission = await Notification.requestPermission();
         if (permission === 'granted') {
-          console.log('Notification permission granted.');
 
           const token = await getToken(messaging, {
-            vapidKey: 'Enter your Cred'
+            vapidKey: 'Enter your Creeds'
           });
 
           if (token) {
-            console.log('FCM Token:', token);
 
-            // Send the token to backend
             const response = await fetch('http://localhost:5000/api/save-token', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -42,7 +46,6 @@ const App = () => {
 
     requestPermission();
 
-    // Handle incoming messages
     onMessage(messaging, (payload) => {
       console.log('Message received:', payload);
       const { title, body, icon } = payload.notification;
@@ -57,6 +60,12 @@ const App = () => {
     });
   }, []);
 
+  const handleLogout = () => {
+    performLogout();
+    setIsAuthenticated(false); // Update authentication status
+    navigate('/login');
+  };
+
   return (
     <>
       <AppBar position="static" sx={{ backgroundColor: '#003366' }}>
@@ -65,33 +74,40 @@ const App = () => {
             Flight Status App
           </Typography>
           <Box sx={{ display: 'flex', gap: 2 }}>
-            <Button color="inherit">Home</Button>
-            <Button color="inherit">Flight Status</Button>
-            <Button color="inherit">Contact Us</Button>
+            {isAuthenticated ? (
+              <>
+                <Button color="inherit" onClick={() => navigate('/flight-status')}>Flight Status</Button>
+                <Button color="inherit" onClick={handleLogout}>Logout</Button>
+              </>
+            ) : (
+              <>
+                <Button color="inherit" onClick={() => navigate('/login')}>Login</Button>
+                <Button color="inherit" onClick={() => navigate('/register')}>Register</Button>
+              </>
+            )}
           </Box>
         </Toolbar>
       </AppBar>
-
-      <Box sx={{ padding: '10px',paddingRight: '33px', textAlign: 'right' }}>
-        <Typography variant="body2" sx={{ color: '#555' }}>
-          Developed by Aradhya Teharia
-        </Typography>
-      </Box>
 
       <Container maxWidth="lg" sx={{ padding: '10px', paddingBottom: '0px', marginTop: '0px' }}>
         <Paper elevation={3} sx={{ padding: '20px', textAlign: 'center' }}>
           <Typography variant="h3" gutterBottom>
             Track Your Flight
           </Typography>
-          <FlightStatus />
+          <Routes>
+            <Route path="/login" element={<Login />} />
+            <Route path="/register" element={<Register />} />
+            <Route
+              path="/flight-status"
+              element={isAuthenticated ? <FlightStatus /> : <Navigate to="/login" />}
+            />
+            <Route
+              path="/"
+              element={isAuthenticated ? <Navigate to="/flight-status" /> : <Navigate to="/login" />}
+            />
+          </Routes>
         </Paper>
       </Container>
-
-      {/* <footer style={{ backgroundColor: '#003366', color: '#ffffff', padding: '10px', textAlign: 'center' }}>
-        <Typography variant="body2">
-          © {new Date().getFullYear()} 
-        </Typography>
-      </footer> */}
     </>
   );
 };

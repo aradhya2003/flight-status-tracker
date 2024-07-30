@@ -3,21 +3,25 @@ import requests
 from google.auth.transport.requests import Request
 from google.oauth2 import service_account
 from flask_cors import CORS
+from flask_jwt_extended import JWTManager, create_access_token, jwt_required
 from pymongo import MongoClient, ReturnDocument
 from bson import ObjectId
+import bcrypt
 
 app = Flask(__name__)
-CORS(app)  # Enable CORS for all routes
+CORS(app)
 
-# MongoDB connection
-MONGO_URI = 'Enter your credentials/Path'
+MONGO_URI = 'Enter Your Creds'
 client = MongoClient(MONGO_URI)
 db = client['flight-status-db']
 flights_collection = db['flights']
+users_collection = db['users']
+
+SERVICE_ACCOUNT_FILE = 'Enter Your Creds'
+app.config['JWT_SECRET_KEY'] = 'Enter Your Creds'
+jwt = JWTManager(app)
 
 tokens = []
-
-SERVICE_ACCOUNT_FILE = 'Enter your credentials/Path'
 
 def get_access_token():
     credentials = service_account.Credentials.from_service_account_file(
@@ -47,14 +51,16 @@ def send_fcm_notification(token, title, body):
 
 @app.route('/api/save-token', methods=['POST'])
 def save_token():
+    global tokens  
     data = request.get_json()
     token = data.get('token')
-    if token not in tokens:
+    if token and token not in tokens:
         tokens.append(token)
     return jsonify({"message": "Token saved"}), 200
 
 @app.route('/api/notify', methods=['POST'])
 def notify():
+    global tokens  
     data = request.get_json()
     title = data.get('title')
     body = data.get('body')
@@ -62,70 +68,53 @@ def notify():
     for token in tokens:
         result = send_fcm_notification(token, title, body)
         results.append(result)
-        print(result)
+        print(f"Notification result: {result}") 
     return jsonify({"message": "Notifications sent", "results": results}), 200
 
+# Route to get flight status
 @app.route('/api/flight-status', methods=['GET'])
 def get_flight_status():
     try:
         flights = list(flights_collection.find({}))
-        
-        # Convert departure times to datetime and sort
+        print(f"Flights retrieved: {flights}") 
         for flight in flights:
-            flight['_id'] = str(flight['_id']) 
-
-        
-        # Sort flights by departure time
+            flight['_id'] = str(flight['_id'])
         flights.sort(key=lambda x: x.get('departure', ''))
-        
         return jsonify({"flights": flights}), 200
     except Exception as e:
-        print(f"Error fetching flight status: {e}")
+        print(f"Error fetching flight status: {e}") 
         return jsonify({"error": str(e)}), 500
+    
 
+    
 @app.route('/api/insert-or-update-flight', methods=['POST'])
 def insert_or_update_flight():
     try:
         data = request.get_json()
-        flight_number = data.get('flight') 
-         # Use flight number as unique identifier
-        result = None
-
-        if flight_number:
-            existing_flight = flights_collection.find_one({"flight": flight_number})
-
-            if existing_flight:
-                # Update the existing flight
-                result = flights_collection.find_one_and_update(
-                    {"flight": flight_number},
-                    {"$set": data},
-                    upsert=True,  
-                    # This will insert the document if it doesn't exist
-                    return_document=ReturnDocument.AFTER
-                )
-                operation = "updated"
-                notify_flight_status_change(existing_flight, data)
-            else:
-                result = flights_collection.find_one_and_update(
-                    {"flight": flight_number},
-                    {"$set": data},
-                    upsert=True,
-                    return_document=ReturnDocument.AFTER
-                )
-                operation = "inserted"
-
-        else:
+        flight_number = data.get('flight')
+        if not flight_number:
             return jsonify({"message": "Flight number is required"}), 400
+        
+        # Remove _id from data if it exists
+        data.pop('_id', None)
 
-        if result:
-            return jsonify({"message": f"Flight data {operation}", "result": str(result['_id'])}), 200
-        else:
-            return jsonify({"message": "No changes made"}), 304
+        result = flights_collection.find_one_and_update(
+            {"flight": flight_number},
+            {"$set": data},
+            upsert=True,
+            return_document=ReturnDocument.AFTER
+        )
+
+        operation = "inserted" if result.get('upserted') else "updated"
+        notify_flight_status_change(result, data)
+        
+        return jsonify({"message": f"Flight data {operation}", "result": str(result['_id'])}), 200
 
     except Exception as e:
-        print(f"Error during flight data insertion/updation: {e}")
+        print(f"Error during flight data insertion/updation: {e}") 
         return jsonify({"error": str(e)}), 500
 
+# Helper function to notify flight status changes
 def notify_flight_status_change(existing_flight, updated_flight):
     notifications = []
 
@@ -145,8 +134,54 @@ def notify_flight_status_change(existing_flight, updated_flight):
         for token in tokens:
             title = f"Update for Flight: {updated_flight['flight']}"
             response = send_fcm_notification(token, title, notification)
-            print(f"Notification response for token {token}: {response}")
+            print(f"Notification response for token {token}: {response}") 
             
+# Route to handle user login
+@app.route('/api/login', methods=['POST'])
+def login():
+    data = request.get_json()
+    username = data.get('username')
+    password = data.get('password')
+
+    if username and password:
+        user = users_collection.find_one({"username": username})
+        if user and bcrypt.checkpw(password.encode('utf-8'), user['password']):
+            role = user.get('role', 'user')  # Default to 'user' if role is not set
+            access_token = create_access_token(identity={'username': username})
+            print(f"Login successful for {username}") 
+            return jsonify(access_token=access_token, role= role), 200
+        else:
+            print(f"Failed login attempt for {username}") 
+            return jsonify({"msg": "Bad username or password"}), 401
+    else:
+        print("Username and password required for login") 
+        return jsonify({"msg": "Username and password required"}), 400
+    
+@app.route('/api/register', methods=['POST'])
+def register():
+    try:
+        data = request.get_json()
+        username = data.get('username')
+        password = data.get('password')
+
+        if username and password:
+            existing_user = users_collection.find_one({"username": username})
+            if existing_user:
+                print(f"Registration failed: Username {username} already exists")  
+                return jsonify({"msg": "Username already exists"}), 400
+
+            hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
+            result = users_collection.insert_one({'username': username, 'password': hashed_password})
+            print(f"User registered with ID: {result.inserted_id}")  
+            return jsonify({"message": "User registered successfully"}), 201
+        else:
+            print("Username and password required for registration")  
+            return jsonify({"msg": "Username and password required"}), 400
+
+    except Exception as e:
+        print(f"Error during registration: {e}")  
+        return jsonify({"error": str(e)}), 500
+
 if __name__ == '__main__':
     print("Starting Flask app...")
     app.run(debug=True)
